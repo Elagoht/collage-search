@@ -61,13 +61,15 @@
               "type": "string",
               "description": "Unavailable is shown where there is no index: on a server rather than on the exported site. Default \"Search is available on the exported site.\""
             }
-          }
+          },
+          "additionalProperties": false
         }
       },
       "maxText": {
         "type": "integer",
         "description": "MaxText is how many characters of a page's text the index keeps. Default 5000: enough to find a page by what it says, without an index the size of the site."
       }
-    }
+    },
+    "additionalProperties": false
   }
 }
