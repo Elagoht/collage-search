@@ -51,7 +51,7 @@ func newSite(opts search.Options, pages map[string]view) (*collage.App, error) {
 		}
 		name := locale + path
 		page := collage.NewPage(name).
-			WithContent(collage.NewFragment(name, "p.html").WithData(data).Build()).
+			WithContent(collage.NewFragment(name, "p.html").WithData(collage.Value(data)).Build()).
 			WithPath(locale, path).
 			Build()
 		if err := app.RegisterPage(page); err != nil {
