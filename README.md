@@ -13,7 +13,7 @@ app, err := collage.New(&collage.Config{
 {{searchBox}}
 ```
 
-Requires collage v0.49.0 or later. Register it in `Config.Plugins`: it adds a
+Requires collage v0.50.0 or later. Register it in `Config.Plugins`: it adds a
 template function, which only a plugin registered there can.
 
 **The index is a static build's.** It is written by `collage export`, and a running
