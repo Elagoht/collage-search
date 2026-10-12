@@ -13,7 +13,7 @@ app, err := collage.New(&collage.Config{
 {{searchBox}}
 ```
 
-Requires collage v0.60.0 or later. Register it in `Config.Plugins`: it adds a
+Requires collage v0.61.0 or later. Register it in `Config.Plugins`: it adds a
 template function, which only a plugin registered there can.
 
 **The index is a static build's.** It is written by `collage export`, and a running
@@ -56,7 +56,7 @@ anything `hidden`, and anything marked `data-search-ignore`:
 ```
 
 A page with `<meta name="robots" content="noindex">` is left out, and so is every
-page under a prefix in `exclude`. Error pages are not indexed.
+page named in `exclude`, in every locale. Error pages are not indexed.
 
 ## The box
 
@@ -107,20 +107,27 @@ exported site." — instead of breaking. Try search on the output of
 
 ## Options
 
-| Option | Default | |
+| Option | JSON | Default | |
+| --- | --- | --- | --- |
+| `MaxText` | `maxText` | `5000` | characters of each page's text the index keeps |
+| `Exclude` | `exclude` | | names of pages left out of the index, in every locale |
+| `Text` | `text` | | what the box says, below |
+| `Locales` | `locales` | | a `text` per locale, by the page's locale; a field left empty keeps `text`'s |
+
+`text` (a `search.Text`) holds:
+
+| Key | Default | |
 | --- | --- | --- |
-| `maxText` | `5000` | characters of each page's text the index keeps |
-| `exclude` | | path prefixes left out of the index |
 | `label` | `Search` | the field's label |
 | `placeholder` | `Search the site` | the field's placeholder |
 | `results` | `{n} results` | the status line; `{n}` is the number |
 | `oneResult` | `1 result` | the status line for one |
 | `noResults` | `No results` | the status line for none |
 | `unavailable` | `Search is available on the exported site.` | where there is no index |
-| `locales` | | the texts above for a locale, by the page's locale |
 
 ```go
 search.New(search.Options{
+	Text: search.Text{Label: "Find"},
 	Locales: map[string]search.Text{
 		"tr": {Label: "Ara", Placeholder: "Sitede ara", Results: "{n} sonuç", OneResult: "1 sonuç",
 			NoResults: "Sonuç yok", Unavailable: "Arama, dışa aktarılan sitede çalışır."},
@@ -134,14 +141,14 @@ search.New(search.Options{
 {
   "elagoht/search": {
     "maxText": 5000,
-    "exclude": ["/admin/", "/tags/"],
-    "label": "Search",
+    "exclude": ["admin", "tags"],
+    "text": { "label": "Search" },
     "locales": { "tr": { "label": "Ara", "noResults": "Sonuç yok" } }
   }
 }
 ```
 
-A negative `maxText` and a prefix not beginning with `/` stop `collage.New`.
+A negative `maxText` and an empty name in `exclude` stop `collage.New`.
 
 ## Limitations
 
@@ -154,3 +161,16 @@ A negative `maxText` and a prefix not beginning with `/` stop `collage.New`.
 - Matching is by substring, not by stem: `running` does not find `run`'s page unless
   it also says `running`. Chinese and Japanese text, written without spaces, is
   matched as whole phrases.
+
+## Changes
+
+### Changed in v0.2.0
+
+| Was | Now |
+| --- | --- |
+| `label`, `placeholder`, `results`, `oneResult`, `noResults`, `unavailable` at the top level (embedded `Text`) | the same keys under `"text"` (`Options.Text`) |
+| `exclude` as path prefixes (`"/admin/"`), which missed a locale's prefixed path (`/tr/admin/`) | `exclude` as page names (`"admin"`), in every locale |
+| `search.ScriptPath` | unexported; `{{searchBox}}` links the script |
+
+A top-level `label` (or any of the five others) now stops the app with
+`unknown key "label"`. Requires collage v0.61.0.

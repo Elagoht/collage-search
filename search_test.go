@@ -11,11 +11,11 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-	"testing/fstest"
 	"unicode/utf8"
 
 	search "github.com/Elagoht/collage-search"
 	"github.com/Elagoht/collage/pkg/collage"
+	"github.com/Elagoht/collage/pkg/collagetest"
 )
 
 const layout = `<!DOCTYPE html><html lang="{{.Lang}}"><head><title>{{.Title}} — Site</title><meta name="description" content="{{.Description}}">{{if .NoIndex}}<meta name="robots" content="noindex, follow">{{end}}</head>
@@ -28,46 +28,57 @@ type view struct {
 	Main, NoIndex            bool
 }
 
-func newSite(opts search.Options, pages map[string]view) (*collage.App, error) {
-	app, err := collage.New(&collage.Config{
-		Server: collage.ServerConfig{Host: "localhost", Port: 3000},
-		Template: collage.TemplateConfig{FS: fstest.MapFS{
-			"t/p.html": {Data: []byte(strings.ReplaceAll(layout, "{{.Body}}", "{{.BodyHTML}}"))},
-		}, Root: "t"},
-		Locale:  collage.LocaleConfig{Default: "en", Supported: []string{"en", "tr"}},
-		Plugins: []collage.Plugin{search.New(opts)},
-	})
-	if err != nil {
-		return nil, err
-	}
+// pagesOf registers pages by path, "/tr/…" in Turkish, each named after its
+// locale and path; a page under /admin/ is the page "admin" in both locales,
+// at "/admin/…" and "/tr/admin/…".
+func pagesOf(pages map[string]view) []collage.Registrable {
+	admin := map[string]string{} // locale → path
+	var adminData collage.Data
+	var items []collage.Registrable
 	for path, v := range pages {
 		locale := "en"
 		if strings.HasPrefix(path, "/tr/") {
 			locale, path = "tr", strings.TrimPrefix(path, "/tr")
 		}
-		data := map[string]any{ // any: the template's data, of mixed types
+		data := collage.Value(map[string]any{ // any: the template's data, of mixed types
 			"Lang": v.Lang, "Title": v.Title, "Description": v.Description,
 			"BodyHTML": template.HTML(v.Body), "Main": v.Main, "NoIndex": v.NoIndex,
+		})
+		if strings.HasPrefix(path, "/admin/") {
+			admin[locale], adminData = path, data
+			continue
 		}
 		name := locale + path
-		page := collage.NewPage(name).
-			WithContent(collage.NewFragment(name, "p.html").WithData(collage.Value(data)).Build()).
+		items = append(items, collage.NewPage(name).
+			WithContent(collage.NewFragment(name, "p.html").WithData(data).Build()).
 			WithPath(locale, path).
-			Build()
-		if err := app.RegisterPage(page); err != nil {
-			return nil, err
-		}
+			Build())
 	}
-	return app, nil
+	if len(admin) > 0 {
+		b := collage.NewPage("admin").WithContent(collage.NewFragment("admin", "p.html").WithData(adminData).Build())
+		for locale, path := range admin {
+			b = b.WithPath(locale, path)
+		}
+		items = append(items, b.Build())
+	}
+	return items
+}
+
+func siteOptions(opts search.Options, pages map[string]view) []collagetest.SiteOption {
+	return []collagetest.SiteOption{
+		collagetest.WithoutHome(),
+		collagetest.WithPlugins(search.New(opts)),
+		collagetest.WithTemplates(map[string]string{"p.html": strings.ReplaceAll(layout, "{{.Body}}", "{{.BodyHTML}}")}),
+		collagetest.WithConfig(func(c *collage.Config) {
+			c.Locale = collage.LocaleConfig{Default: "en", Supported: []string{"en", "tr"}}
+		}),
+		collagetest.WithRegister(pagesOf(pages)...),
+	}
 }
 
 func site(t *testing.T, opts search.Options, pages map[string]view) *collage.App {
 	t.Helper()
-	app, err := newSite(opts, pages)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return app
+	return collagetest.NewSite(t, siteOptions(opts, pages)...).App
 }
 
 func get(app *collage.App, path string) *httptest.ResponseRecorder {
@@ -97,15 +108,16 @@ func pages() map[string]view {
 	return map[string]view{
 		"/caching": {Lang: "en", Title: "Caching", Description: "How caching works", Main: true,
 			Body: `<p>collage caches <em>pages</em></p><p>and data.</p><h2 id="tags">Dependency tags</h2><p>Tags invalidate.</p><pre><code>code block</code></pre><h3>No id here</h3>`},
-		"/tr/onbellek": {Lang: "tr", Title: "Önbellek", Main: true, Body: `<p>Çiçek ve ışık.</p>`},
-		"/plain":       {Lang: "en", Title: "No main", Body: `<p>body text</p>`},
-		"/hidden":      {Lang: "en", Title: "Hidden", NoIndex: true, Main: true, Body: `<p>secret</p>`},
-		"/admin/users": {Lang: "en", Title: "Users", Main: true, Body: `<p>admin</p>`},
+		"/tr/onbellek":    {Lang: "tr", Title: "Önbellek", Main: true, Body: `<p>Çiçek ve ışık.</p>`},
+		"/plain":          {Lang: "en", Title: "No main", Body: `<p>body text</p>`},
+		"/hidden":         {Lang: "en", Title: "Hidden", NoIndex: true, Main: true, Body: `<p>secret</p>`},
+		"/admin/users":    {Lang: "en", Title: "Users", Main: true, Body: `<p>admin</p>`},
+		"/tr/admin/users": {Lang: "tr", Title: "Kullanıcılar", Main: true, Body: `<p>admin</p>`},
 	}
 }
 
 func TestIndex(t *testing.T) {
-	_, entries := build(t, site(t, search.Options{Exclude: []string{"/admin/"}}, pages()))
+	_, entries := build(t, site(t, search.Options{Exclude: []string{"admin"}}, pages()))
 	byPath := map[string]search.Entry{}
 	var paths []string
 	for _, e := range entries {
@@ -113,7 +125,7 @@ func TestIndex(t *testing.T) {
 		paths = append(paths, e.Path)
 	}
 	if strings.Join(paths, " ") != "/caching /plain /tr/onbellek" {
-		t.Fatalf("indexed %v: sorted, without the noindex page and the excluded prefix", paths)
+		t.Fatalf("indexed %v: sorted, without the noindex page and the excluded page", paths)
 	}
 
 	c := byPath["/caching"]
@@ -160,18 +172,15 @@ var scriptSrc = regexp.MustCompile(`<script src="(/_search/search\.[0-9a-f]{16}\
 
 func TestSearchBox(t *testing.T) {
 	opts := search.Options{Locales: map[string]search.Text{"tr": {Label: "Ara", Unavailable: `Arama "dışa aktarılan" sitede`}}}
-	app, err := collage.New(&collage.Config{
-		Server: collage.ServerConfig{Host: "localhost", Port: 3000},
-		Template: collage.TemplateConfig{FS: fstest.MapFS{
-			"t/p.html": {Data: []byte(`<html><body>{{searchBox}}{{searchBox}}</body></html>`)},
-		}, Root: "t"},
-		Locale:  collage.LocaleConfig{Default: "en", Supported: []string{"en", "tr"}},
-		Plugins: []collage.Plugin{search.New(opts)},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = app.RegisterPage(collage.NewPage("p").WithContent(collage.NewFragment("p", "p.html").Build()).WithPath("en", "/").WithPath("tr", "/").Build())
+	app := collagetest.NewSite(t,
+		collagetest.WithoutHome(),
+		collagetest.WithPlugins(search.New(opts)),
+		collagetest.WithTemplates(map[string]string{"p.html": `<html><body>{{searchBox}}{{searchBox}}</body></html>`}),
+		collagetest.WithConfig(func(c *collage.Config) {
+			c.Locale = collage.LocaleConfig{Default: "en", Supported: []string{"en", "tr"}}
+		}),
+		collagetest.WithRegister(collage.NewPage("p").WithContent(collage.NewFragment("p", "p.html").Build()).WithPath("en", "/").WithPath("tr", "/").Build()),
+	).App
 
 	body := get(app, "/").Body.String()
 	for _, want := range []string{
@@ -232,11 +241,28 @@ func TestBuildWritesScript(t *testing.T) {
 
 func TestMisconfigurationStopsNew(t *testing.T) {
 	for name, opts := range map[string]search.Options{
-		"negative maxText":  {MaxText: -1},
-		"a relative prefix": {Exclude: []string{"admin/"}},
+		"negative maxText": {MaxText: -1},
+		"an empty page":    {Exclude: []string{""}},
 	} {
-		if _, err := newSite(opts, nil); err == nil {
-			t.Errorf("%s: collage.New succeeded", name)
+		if _, err := collagetest.TrySite(t, siteOptions(opts, nil)...); err == nil || !strings.Contains(err.Error(), "search:") {
+			t.Errorf("%s: err = %v, want a search: error", name, err)
 		}
+	}
+}
+
+// The box's words are under "text" now; the old top-level keys stop the app.
+func TestTextKeys(t *testing.T) {
+	_, err := collagetest.TrySite(t, append(siteOptions(search.Options{}, nil),
+		collagetest.WithPluginConfig(search.Name, `{"label":"Find"}`))...)
+	if err == nil || !strings.Contains(err.Error(), `unknown key "label"`) {
+		t.Errorf("err = %v, want unknown key \"label\"", err)
+	}
+	app := collagetest.NewSite(t,
+		collagetest.WithPlugins(search.New(search.Options{})),
+		collagetest.WithPluginConfig(search.Name, `{"text":{"label":"Find"},"locales":{"tr":{"label":"Ara"}}}`),
+		collagetest.WithTemplates(map[string]string{"home.html": `{{searchBox}}`}),
+	).App
+	if body := get(app, "/").Body.String(); !strings.Contains(body, `>Find</label>`) || !strings.Contains(body, `placeholder="Search the site"`) {
+		t.Errorf("text.label not applied:\n%s", body)
 	}
 }

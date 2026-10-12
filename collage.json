@@ -27,7 +27,7 @@
     "properties": {
       "exclude": {
         "type": "array",
-        "description": "Exclude are path prefixes left out of the index: \"/admin/\", \"/tags/\".",
+        "description": "Exclude names pages left out of the index, in every locale: \"admin\", \"tags\".",
         "items": {
           "type": "string"
         }
@@ -47,7 +47,8 @@
               "description": "NoResults says nothing was found. Default \"No results\"."
             },
             "oneResult": {
-              "type": "string"
+              "type": "string",
+              "description": "OneResult announces one page found. Default \"1 result\"."
             },
             "placeholder": {
               "type": "string",
@@ -55,7 +56,7 @@
             },
             "results": {
               "type": "string",
-              "description": "Results announces how many pages were found, \"{n}\" standing for the number; OneResult announces one. Default \"{n} results\" and \"1 result\"."
+              "description": "Results announces how many pages were found, \"{n}\" standing for the number. Default \"{n} results\"."
             },
             "unavailable": {
               "type": "string",
@@ -68,6 +69,37 @@
       "maxText": {
         "type": "integer",
         "description": "MaxText is how many characters of a page's text the index keeps. Default 5000: enough to find a page by what it says, without an index the size of the site."
+      },
+      "text": {
+        "type": "object",
+        "description": "Text is what the box says in the default locale, and in any locale Locales does not name.",
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "Label labels the field. Default \"Search\"."
+          },
+          "noResults": {
+            "type": "string",
+            "description": "NoResults says nothing was found. Default \"No results\"."
+          },
+          "oneResult": {
+            "type": "string",
+            "description": "OneResult announces one page found. Default \"1 result\"."
+          },
+          "placeholder": {
+            "type": "string",
+            "description": "Placeholder is the field's placeholder. Default \"Search the site\"."
+          },
+          "results": {
+            "type": "string",
+            "description": "Results announces how many pages were found, \"{n}\" standing for the number. Default \"{n} results\"."
+          },
+          "unavailable": {
+            "type": "string",
+            "description": "Unavailable is shown where there is no index: on a server rather than on the exported site. Default \"Search is available on the exported site.\""
+          }
+        },
+        "additionalProperties": false
       }
     },
     "additionalProperties": false

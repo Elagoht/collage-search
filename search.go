@@ -30,6 +30,7 @@ import (
 	"html/template"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -47,10 +48,13 @@ const Name = "elagoht/search"
 // IndexFile is the file a static build writes the index to, at the root of its
 // output, and IndexPath where the site serves it.
 const (
-	IndexFile  = "search-index.json"
-	IndexPath  = "/" + IndexFile
-	ScriptPath = "/_search/search.js"
+	IndexFile = "search-index.json"
+	IndexPath = "/" + IndexFile
 )
+
+// scriptPath is where the plugin mounts its script; {{searchBox}} links it
+// through rc.Asset.
+const scriptPath = "/_search/search.js"
 
 //go:embed search.js
 var script []byte
@@ -61,10 +65,12 @@ type Options struct {
 	// 5000: enough to find a page by what it says, without an index the size of
 	// the site.
 	MaxText int `json:"maxText"`
-	// Exclude are path prefixes left out of the index: "/admin/", "/tags/".
+	// Exclude names pages left out of the index, in every locale: "admin",
+	// "tags".
 	Exclude []string `json:"exclude"`
-	// Text is what the box says.
-	Text
+	// Text is what the box says in the default locale, and in any locale
+	// Locales does not name.
+	Text Text `json:"text"`
 	// Locales replaces Text for a locale; a field left empty keeps Text's.
 	Locales map[string]Text `json:"locales"`
 }
@@ -76,8 +82,9 @@ type Text struct {
 	// Placeholder is the field's placeholder. Default "Search the site".
 	Placeholder string `json:"placeholder"`
 	// Results announces how many pages were found, "{n}" standing for the
-	// number; OneResult announces one. Default "{n} results" and "1 result".
-	Results   string `json:"results"`
+	// number. Default "{n} results".
+	Results string `json:"results"`
+	// OneResult announces one page found. Default "1 result".
 	OneResult string `json:"oneResult"`
 	// NoResults says nothing was found. Default "No results".
 	NoResults string `json:"noResults"`
@@ -120,7 +127,7 @@ var (
 func New(opts Options) *Plugin { return &Plugin{opts: opts} }
 
 func (p *Plugin) Name() string                   { return Name }
-func (p *Plugin) Version() string                { return "0.1.6" }
+func (p *Plugin) Version() string                { return "0.2.0" }
 func (p *Plugin) Shutdown(context.Context) error { return nil }
 
 // Configure reads the configuration and adds {{searchBox}}.
@@ -136,9 +143,9 @@ func (p *Plugin) Configure(_ context.Context, host collage.ConfigHost) error {
 	if o.MaxText < 0 {
 		return fmt.Errorf("search: maxText %d: a length is positive", o.MaxText)
 	}
-	for _, prefix := range o.Exclude {
-		if !strings.HasPrefix(prefix, "/") {
-			return fmt.Errorf("search: exclude %q: a path prefix begins with /", prefix)
+	for _, name := range o.Exclude {
+		if name == "" {
+			return errors.New("search: exclude: a page name is not empty")
 		}
 	}
 	defaults := Text{
@@ -190,7 +197,7 @@ func (p *Plugin) Init(_ context.Context, host collage.Host) error {
 // box renders the n-th search box of one render. It is hidden until the script
 // takes it over: without the script it could only be a form that does nothing.
 func (p *Plugin) box(rc *collage.RenderContext, n int) (template.HTML, error) {
-	src, err := rc.Asset(ScriptPath)
+	src, err := rc.Asset(scriptPath)
 	if err != nil {
 		return "", fmt.Errorf("search: %w", err)
 	}
@@ -223,7 +230,7 @@ func (p *Plugin) box(rc *collage.RenderContext, n int) (template.HTML, error) {
 func (p *Plugin) OnBuildFinished(_ context.Context, ev *collage.BuildFinishedEvent) error {
 	entries := make([]Entry, 0, len(ev.Files))
 	for _, f := range ev.Files {
-		if f.Kind != "page" || f.Name == "" || p.excluded(f.Path) {
+		if f.Kind != collage.BuiltPage || f.Name == "" || p.excluded(f.Name) {
 			continue
 		}
 		body, err := os.ReadFile(f.File)
@@ -255,13 +262,9 @@ func (p *Plugin) OnBuildFinished(_ context.Context, ev *collage.BuildFinishedEve
 	return nil
 }
 
-func (p *Plugin) excluded(path string) bool {
-	for _, prefix := range p.opts.Exclude {
-		if strings.HasPrefix(path, prefix) {
-			return true
-		}
-	}
-	return false
+// excluded reports whether the page name is in Exclude.
+func (p *Plugin) excluded(name string) bool {
+	return slices.Contains(p.opts.Exclude, name)
 }
 
 // entry reads one page. A page asking not to be indexed is not.
