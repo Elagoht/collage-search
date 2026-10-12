@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"html/template"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -144,8 +145,13 @@ func (p *Plugin) Configure(_ context.Context, host collage.ConfigHost) error {
 		return fmt.Errorf("search: maxText %d: a length is positive", o.MaxText)
 	}
 	for _, name := range o.Exclude {
-		if name == "" {
+		switch {
+		case name == "":
 			return errors.New("search: exclude: a page name is not empty")
+		case strings.HasPrefix(name, "/"):
+			// The v0.1 form: a path prefix matches no page name, so it would
+			// silently index the pages it meant to hide.
+			return fmt.Errorf("search: exclude %q: exclude takes page names (%q) since v0.2.0, not path prefixes", name, path.Base(strings.TrimRight(name, "/")))
 		}
 	}
 	defaults := Text{
@@ -184,10 +190,16 @@ func merge(base, over Text) Text {
 	}
 }
 
-// Init serves the script.
+// Init checks that every excluded name is a registered page, so a misspelt one
+// is not a page silently indexed, and serves the script.
 func (p *Plugin) Init(_ context.Context, host collage.Host) error {
 	if p.opts.MaxText == 0 {
 		return errors.New("search: register the plugin in Config.Plugins, where Configure runs; {{searchBox}} needs it")
+	}
+	for _, name := range p.opts.Exclude {
+		if _, ok := host.Page(name); !ok {
+			return fmt.Errorf("search: exclude %q: no page has that name", name)
+		}
 	}
 	// fstest.MapFS is the standard library's in-memory file system: a mount needs
 	// files that seek and a directory a build can walk, and it has both.

@@ -148,7 +148,9 @@ search.New(search.Options{
 }
 ```
 
-A negative `maxText` and an empty name in `exclude` stop `collage.New`.
+A negative `maxText` and an empty name in `exclude` stop `collage.New`. So does a
+name in `exclude` that begins with `/` (the old prefix form) or that no registered
+page has, so a typo is not a page silently indexed.
 
 ## Limitations
 
@@ -171,6 +173,10 @@ A negative `maxText` and an empty name in `exclude` stop `collage.New`.
 | `label`, `placeholder`, `results`, `oneResult`, `noResults`, `unavailable` at the top level (embedded `Text`) | the same keys under `"text"` (`Options.Text`) |
 | `exclude` as path prefixes (`"/admin/"`), which missed a locale's prefixed path (`/tr/admin/`) | `exclude` as page names (`"admin"`), in every locale |
 | `search.ScriptPath` | unexported; `{{searchBox}}` links the script |
+
+An old prefix in `exclude` stops the app rather than matching nothing:
+`search: exclude "/admin/": exclude takes page names ("admin") since v0.2.0, not path prefixes`.
+A name no page has stops it too: `search: exclude "x": no page has that name`.
 
 A top-level `label` (or any of the five others) now stops the app with
 `unknown key "label"`. Requires collage v0.61.0.

@@ -266,3 +266,25 @@ func TestTextKeys(t *testing.T) {
 		t.Errorf("text.label not applied:\n%s", body)
 	}
 }
+
+// exclude takes page names. The old prefix form ("/admin/") would match no page
+// and silently index the pages it meant to hide, so it stops the app, as does a
+// name no page has; a real name excludes.
+func TestExcludeRefusesPrefixesAndUnknownNames(t *testing.T) {
+	for exclude, want := range map[string]string{
+		"/admin/": `search: exclude "/admin/": exclude takes page names ("admin") since v0.2.0, not path prefixes`,
+		"/tags/":  `search: exclude "/tags/": exclude takes page names ("tags") since v0.2.0, not path prefixes`,
+		"admni":   `search: exclude "admni": no page has that name`,
+	} {
+		_, err := collagetest.TrySite(t, siteOptions(search.Options{Exclude: []string{exclude}}, pages())...)
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("exclude %q: err = %v, want %q", exclude, err, want)
+		}
+	}
+	_, entries := build(t, site(t, search.Options{Exclude: []string{"admin"}}, pages()))
+	for _, e := range entries {
+		if strings.Contains(e.Path, "/admin/") {
+			t.Errorf("the excluded page admin is indexed at %s", e.Path)
+		}
+	}
+}
