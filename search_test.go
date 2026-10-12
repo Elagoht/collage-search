@@ -79,11 +79,7 @@ func get(app *collage.App, path string) *httptest.ResponseRecorder {
 func build(t *testing.T, app *collage.App) (string, []search.Entry) {
 	t.Helper()
 	out := t.TempDir()
-	b, err := collage.NewBuilder(app, collage.BuildOptions{OutDir: out})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := b.Build(context.Background()); err != nil {
+	if _, err := collage.Build(context.Background(), app, collage.BuildOptions{OutDir: out}); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := os.ReadFile(filepath.Join(out, search.IndexFile))
